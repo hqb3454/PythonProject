@@ -61,4 +61,6 @@ def add_to_kb(corpus: str, filename: str, content: str) -> str:
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_PORT
-    mcp.run(transport="streamable-http", host="127.0.0.1", port=port)
+    mcp.settings.host = "127.0.0.1"
+    mcp.settings.port = port
+    mcp.run(transport="streamable-http")
