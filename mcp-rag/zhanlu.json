@@ -1,0 +1,15 @@
+{
+  "mcp": {
+    "rag-kb": {
+      "type": "local",
+      "command": [
+        "F:\\PythonProject\\rag\\.venv\\Scripts\\python.exe",
+        "F:\\PythonProject\\mcp-rag\\server.py"
+      ],
+      "enabled": true
+    }
+  },
+  "permission": {
+    "rag-kb_*": "allow"
+  }
+}
