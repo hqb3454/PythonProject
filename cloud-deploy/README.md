@@ -107,6 +107,8 @@ bash cloud-deploy/scripts/install_bclinux.sh
 - curl / ca-certificates
 - Python 依赖：FastAPI、MCP、ChromaDB、sentence-transformers 等
 
+如果安装 Node.js 时出现 `This script is intended for RPM-based systems`，这是 NodeSource 没有识别 BC-Linux 发行版导致的。新版 `install_bclinux.sh` 会自动回退到 Node.js 官方二进制包安装。
+
 如果是 Ubuntu，才使用：
 
 ```bash
