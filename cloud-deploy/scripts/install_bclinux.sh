@@ -10,14 +10,14 @@ if command -v dnf >/dev/null 2>&1; then
 elif command -v yum >/dev/null 2>&1; then
   PKG_MANAGER="yum"
 else
-  echo "Neither dnf nor yum was found. Please install Python, Node.js and Nginx manually."
+  echo "Neither dnf nor yum was found. Please install Python and Node.js manually."
   exit 1
 fi
 
 sudo mkdir -p "$APP_ROOT/models"
 sudo chown -R "$USER":"$USER" "$APP_ROOT"
 
-sudo "$PKG_MANAGER" install -y python3 python3-pip nginx curl ca-certificates
+sudo "$PKG_MANAGER" install -y python3 python3-pip curl ca-certificates
 
 if ! python3 -m venv --help >/dev/null 2>&1; then
   sudo "$PKG_MANAGER" install -y python3-venv || true

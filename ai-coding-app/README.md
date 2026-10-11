@@ -46,9 +46,9 @@ npm install
 npm run dev
 ```
 
-访问 `http://127.0.0.1:5180`。前端使用固定 5180 端口和 `strictPort`，避免和其他 Vue/Vite 学习项目抢占 5173/5174。前端默认请求 `/api`，本地开发由 Vite proxy 转发到 `127.0.0.1:8000`，云端部署由 Nginx 转发到后端。HTTP MCP 默认使用 8766，避免和湛卢 IDE 或其他调试中的 MCP 服务抢占 8765。
+访问 `http://127.0.0.1:5180`。前端使用固定 5180 端口和 `strictPort`，避免和其他 Vue/Vite 学习项目抢占 5173/5174。前端默认请求 `/api`，本地和 SSH 隧道测试时都由 Vite proxy 转发到 `127.0.0.1:8000`。HTTP MCP 默认使用 8766，避免和湛卢 IDE 或其他调试中的 MCP 服务抢占 8765。
 
-如果部署到服务器并希望从其他机器访问前端，使用 `npm run dev:host` 或 `npm run preview:host`，端口仍分别是 5180 和 4180；同时需要把后端/MCP 的 host、防火墙和前端 API 地址按服务器环境调整。
+如果迁移到云主机但不开放 Web 公网端口，保持 `npm run dev` 即可让 Vue 监听云主机本机 `127.0.0.1:5180`，再用 SSH 隧道从本地电脑访问。具体命令见 `cloud-deploy/README.md`。
 
 如果配置了 `GEMINI_API_KEY` 或 `GOOGLE_API_KEY`，后端会尝试调用 `google-genai`；否则使用本地可演示的降级生成逻辑，仍会展示 RAG 引用、代码模板、测试用例和修复建议。
 

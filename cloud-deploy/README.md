@@ -1,6 +1,12 @@
-# 云主机部署说明
+# 云主机 SSH 隧道测试部署说明
 
-本目录用于把 `校园代码智能助手` 迁移到云主机运行。建议云主机使用 Linux/Ubuntu，公网访问走 Nginx 的 80 端口，后端和 MCP 只监听云主机本机 `127.0.0.1`。
+本目录用于把 `校园代码智能助手` 放到云主机上运行，但不开放 Web 公网端口。当前方案适合学习、测试和比赛前自测：
+
+- 不使用 Nginx。
+- 不使用 `80`、`8080`、`443`、`8443`。
+- 云平台安全组只需要开放 `22`，用于 SSH/VSCode Remote SSH。
+- Vue、FastAPI、MCP 都只监听云主机自己的 `127.0.0.1`。
+- 你在本地电脑通过 SSH 隧道访问云主机里的 Vue 页面。
 
 你的云主机信息：
 
@@ -8,30 +14,57 @@
 - 内网 IPv4：`192.168.0.64`
 - IPv6：`2409:8c85:2021:bb29:f8c5:27cd:ac1b:42d3`
 
-## 关键结论
+## 运行结构
 
-- 浏览器里的 `127.0.0.1` 指的是访问者自己的电脑，不是云主机，所以前端不能把 API 地址写死成 `http://127.0.0.1:8000`。
-- 后端访问 MCP 时可以继续用 `http://127.0.0.1:8766/mcp`，因为后端和 MCP 都跑在同一台云主机上。
-- 云主机对外建议只开放 `80` 或 `443`，不要把 MCP 的 `8766` 暴露到公网。
-- ChromaDB 不需要单独下载安装数据库服务，它是 Python 包和本地持久化目录。第一次检索时会根据 `mcp-rag/kb` 自动构建 `mcp-rag/knowledge`。
-- 模型权重不要进 Git。云主机上把模型下载/上传到 `/opt/campus-assistant/models`，然后设置 `RAG_MODEL_DIR=/opt/campus-assistant/models`。
-
-## 推荐运行端口
-
-| 组件 | 监听地址 | 端口 | 是否公网开放 |
-| --- | --- | --- | --- |
-| Nginx | `0.0.0.0` | `80` | 是 |
-| FastAPI 后端 | `127.0.0.1` | `8000` | 否 |
-| HTTP MCP RAG | `127.0.0.1` | `8766` | 否 |
-| Vue 静态文件 | Nginx root | 无独立端口 | 通过 80 访问 |
-
-最终访问地址：
+云主机内部运行：
 
 ```text
-http://36.213.141.60/
+Vue dev server: 127.0.0.1:5180
+FastAPI 后端:   127.0.0.1:8000
+HTTP MCP RAG:   127.0.0.1:8766
 ```
 
-## 云主机目录约定
+你的本地电脑建立 SSH 隧道：
+
+```text
+本地 127.0.0.1:5180 -> 云主机 127.0.0.1:5180
+本地 127.0.0.1:8000 -> 云主机 127.0.0.1:8000
+```
+
+然后你在本地浏览器打开：
+
+```text
+http://127.0.0.1:5180/
+```
+
+页面其实是云主机上的 Vue 服务返回的。
+
+## 关于 `/api`
+
+前端 Vue 代码默认请求 `/api`，例如：
+
+```text
+/api/health
+/api/chat
+/api/code/generate
+```
+
+在这个 SSH 隧道测试方案里，不需要 Nginx。Vue 开发服务器 Vite 会把 `/api` 转发到云主机内部的 FastAPI：
+
+```text
+Vue/Vite 127.0.0.1:5180
+  -> /api
+  -> FastAPI 127.0.0.1:8000
+```
+
+FastAPI 再访问 MCP：
+
+```text
+FastAPI 127.0.0.1:8000
+  -> MCP 127.0.0.1:8766/mcp
+```
+
+## 目录约定
 
 ```text
 /opt/campus-assistant/
@@ -42,17 +75,13 @@ http://36.213.141.60/
     mmarco-mMiniLMv2-L12-H384-v1/
 ```
 
-## 部署步骤
+`/opt` 不是必须，但适合放这种长期运行的应用。如果你只想临时测试，也可以放在 `/root/campus-assistant`，但要同步修改 `APP_ROOT`。
 
-### 1. 登录云主机
+## 1. 登录云主机并 clone 项目
 
 ```bash
 ssh root@36.213.141.60
 ```
-
-### 2. 安装基础依赖
-
-建议把仓库 clone 到固定目录，方便 systemd 服务直接使用：
 
 ```bash
 sudo mkdir -p /opt/campus-assistant
@@ -61,28 +90,35 @@ git clone <你的仓库地址> /opt/campus-assistant/repo
 cd /opt/campus-assistant/repo
 ```
 
-你的云主机镜像是 BC-Linux 21.10 U4 64 位，优先执行：
+如果你通过 VSCode Remote SSH 操作，也是在云主机终端里执行这些命令。
+
+## 2. 安装运行依赖
+
+你的镜像是 BC-Linux 21.10 U4 64 位，执行：
 
 ```bash
 bash cloud-deploy/scripts/install_bclinux.sh
 ```
 
-如果是 Ubuntu，执行：
+这个脚本不会安装 Linux 系统，也不会配置公网 Web 服务。它只安装：
+
+- Python / pip / venv
+- Node.js / npm
+- curl / ca-certificates
+- Python 依赖：FastAPI、MCP、ChromaDB、sentence-transformers 等
+
+如果是 Ubuntu，才使用：
 
 ```bash
 bash cloud-deploy/scripts/install_ubuntu.sh
 ```
 
-两个脚本都只是安装 Python、Node.js、Nginx 和 Python 依赖，不会上传模型，也不会自动修改云平台安全组。
+## 3. 上传本地模型
 
-### 3. 准备模型
-
-方式 A：从本地上传模型目录到云主机：
-
-先在云主机上创建目录：
+先在云主机上创建模型目录：
 
 ```bash
-ssh root@36.213.141.60 "mkdir -p /opt/campus-assistant/models"
+mkdir -p /opt/campus-assistant/models
 ```
 
 然后在 Windows PowerShell 本地执行：
@@ -92,9 +128,22 @@ scp -r "F:/PythonProject/models/text2vec-base-chinese" root@36.213.141.60:/opt/c
 scp -r "F:/PythonProject/models/mmarco-mMiniLMv2-L12-H384-v1" root@36.213.141.60:/opt/campus-assistant/models/
 ```
 
-如果你的云主机不是 root 用户，把 `root@36.213.141.60` 改成你的用户名。
+如果 `scp` 慢，可以先压缩再上传：
 
-上传完成后，在云主机验证：
+```powershell
+cd F:/PythonProject
+tar -czf models.tar.gz models/text2vec-base-chinese models/mmarco-mMiniLMv2-L12-H384-v1
+scp models.tar.gz root@36.213.141.60:/opt/campus-assistant/
+```
+
+云主机上解压：
+
+```bash
+cd /opt/campus-assistant
+tar -xzf models.tar.gz
+```
+
+验证模型目录：
 
 ```bash
 cd /opt/campus-assistant/repo
@@ -102,127 +151,128 @@ source /opt/campus-assistant/venv/bin/activate
 python cloud-deploy/scripts/verify_models.py
 ```
 
-方式 B：在云主机下载模型。模型源可能因网络环境不同而变化，脚本只给出 Hugging Face/SentenceTransformers 常见下载方式：
+## 4. 启动三个服务
+
+终端 1：启动 MCP。
 
 ```bash
+cd /opt/campus-assistant/repo
 source /opt/campus-assistant/venv/bin/activate
-python cloud-deploy/scripts/download_models.py
+export APP_ROOT=/opt/campus-assistant
+export REPO_DIR=/opt/campus-assistant/repo
+export RAG_MODEL_DIR=/opt/campus-assistant/models
+bash cloud-deploy/scripts/start_mcp.sh
 ```
 
-如果下载失败，优先使用方式 A 上传本地已有模型。
-
-### 4. 配置环境变量
+终端 2：启动 FastAPI。
 
 ```bash
-sudo cp cloud-deploy/campus-assistant.env.example /etc/campus-assistant.env
-sudo nano /etc/campus-assistant.env
+cd /opt/campus-assistant/repo
+source /opt/campus-assistant/venv/bin/activate
+export APP_ROOT=/opt/campus-assistant
+export REPO_DIR=/opt/campus-assistant/repo
+bash cloud-deploy/scripts/start_backend.sh
 ```
 
-默认值已经适合本机部署，通常只需要确认 `RAG_MODEL_DIR=/opt/campus-assistant/models`。
-
-### 5. 构建前端
+终端 3：启动 Vue。
 
 ```bash
-bash cloud-deploy/scripts/build_frontend.sh
+cd /opt/campus-assistant/repo
+export APP_ROOT=/opt/campus-assistant
+export REPO_DIR=/opt/campus-assistant/repo
+bash cloud-deploy/scripts/start_frontend_dev.sh
 ```
 
-前端默认使用 `/api` 调后端，云端由 Nginx 转发，不需要把公网 IP 写入 Vue 代码。
+## 5. 在本地电脑建立 SSH 隧道
 
-### 6. 安装 systemd 服务
+在你自己的 Windows PowerShell 里执行：
 
-```bash
-sudo cp cloud-deploy/systemd/campus-mcp.service /etc/systemd/system/
-sudo cp cloud-deploy/systemd/campus-backend.service /etc/systemd/system/
-chmod +x cloud-deploy/scripts/*.sh
-sudo systemctl daemon-reload
-sudo systemctl enable --now campus-mcp campus-backend
+```powershell
+ssh -L 5180:127.0.0.1:5180 -L 8000:127.0.0.1:8000 root@36.213.141.60
 ```
 
-检查状态：
-
-```bash
-systemctl status campus-mcp
-systemctl status campus-backend
-```
-
-### 7. 配置 Nginx
-
-如果你的云主机 80 端口因为 ICP 备案暂时不能用，可以先用 8080 端口测试：
-
-```bash
-sudo cp cloud-deploy/nginx/campus-assistant-8080.conf /etc/nginx/conf.d/campus-assistant.conf
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-然后在云平台安全组新增入向规则：TCP `8080`，授权对象可以先填你的当前公网 IP，测试阶段不要必须开放给所有人。访问：
+这个 SSH 窗口保持打开。然后本地浏览器访问：
 
 ```text
-http://36.213.141.60:8080/
+http://127.0.0.1:5180/
 ```
 
-如果 8080 也受限，可以用 SSH 隧道在本地测试，不需要开放 HTTP 端口：
+如果你本地 `5180` 已经被占用，可以换成本地 `15180`：
 
-```bash
-ssh -L 18080:127.0.0.1:8000 root@36.213.141.60
-```
-
-然后本地浏览器访问后端健康检查：
-
-```text
-http://127.0.0.1:18080/api/health
-```
-
-如果以后 80 端口可用，再使用正式 80 配置：
-
-```bash
-sudo cp cloud-deploy/nginx/campus-assistant.conf /etc/nginx/sites-available/campus-assistant.conf
-sudo ln -sf /etc/nginx/sites-available/campus-assistant.conf /etc/nginx/sites-enabled/campus-assistant.conf
-sudo nginx -t
-sudo systemctl reload nginx
+```powershell
+ssh -L 15180:127.0.0.1:5180 -L 18000:127.0.0.1:8000 root@36.213.141.60
 ```
 
 然后访问：
 
 ```text
-http://36.213.141.60/
+http://127.0.0.1:15180/
 ```
 
-### 8. 验证
+注意：这种情况下页面仍然正常，因为页面的 `/api` 请求会先到本地 `15180`，再通过 SSH 隧道进入云主机的 Vite，最后由 Vite proxy 转给云主机的 FastAPI。
+
+## 6. 验证后端
+
+在云主机上执行：
 
 ```bash
+cd /opt/campus-assistant/repo
+source /opt/campus-assistant/venv/bin/activate
 python cloud-deploy/scripts/smoke_test.py
 ```
 
-也可以手动检查：
+或者在已经建立 SSH 隧道的本地电脑访问：
 
-```bash
-curl http://127.0.0.1:8000/api/health
-curl http://36.213.141.60/api/health
+```text
+http://127.0.0.1:8000/api/health
 ```
+
+如果你用的是 `18000` 映射：
+
+```text
+http://127.0.0.1:18000/api/health
+```
+
+## 安全组要求
+
+只需要开放：
+
+```text
+TCP 22
+```
+
+不需要开放：
+
+```text
+80
+8080
+443
+8443
+5180
+8000
+8766
+```
+
+你的安全组里，TCP `22` 当前只允许 `112.3.215.73/32`。如果你当前电脑公网 IP 不是这个，VSCode SSH、`ssh`、`scp` 都会连不上，需要把授权对象改成你当前公网 IP。
+
+## 关于 ChromaDB
+
+ChromaDB 不需要单独安装数据库服务。它是 Python 依赖包，数据会生成在：
+
+```text
+mcp-rag/knowledge
+```
+
+这个目录不需要提前上传。云主机第一次检索时，会根据：
+
+```text
+mcp-rag/kb
+```
+
+自动重建向量库。
 
 ## 关于在线模型
 
-当前部署包默认使用本地 embedding 和 rerank 模型，原因是：
+当前方案使用本地 embedding/rerank 模型，适合比赛演示和离线稳定运行。
 
-- 本地模型不依赖公网 API，演示更稳定。
-- RAG 的向量维度和 ChromaDB 索引与 embedding 模型绑定，随意切换在线 embedding 模型需要重建向量库。
-- rerank 在线化也需要额外 API key、费用和延迟控制。
-
-如果后续要改在线模型，建议只把“大模型回答生成”接在线 API；embedding/rerank 仍保留本地模型，迁移风险最低。
-
-## 防火墙建议
-
-云平台安全组至少开放：
-
-- `22`：SSH
-- `80`：HTTP
-
-如果没有 HTTPS，先不要开放 `443`。不要开放 `8000` 和 `8766`，它们只给 Nginx/后端本机访问。
-
-你当前截图里的安全组只允许：
-
-- TCP `22`：只允许 `112.3.215.73/32` 这个公网 IP SSH 登录。
-- ICMP：允许所有 IP ping。
-
-要从浏览器访问作品，还需要新增一条入向规则：TCP `80`，授权对象 `0.0.0.0/0`。如果以后配置 HTTPS，再新增 TCP `443`。
+后续如果接在线模型，建议只把“最终回答生成”接在线 LLM。embedding/rerank 仍保留本地模型，因为 ChromaDB 的向量索引和 embedding 模型绑定，随意更换 embedding 模型需要重建索引。

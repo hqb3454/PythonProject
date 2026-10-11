@@ -8,7 +8,7 @@ sudo mkdir -p "$APP_ROOT/models"
 sudo chown -R "$USER":"$USER" "$APP_ROOT"
 
 sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip nginx curl ca-certificates
+sudo apt-get install -y python3 python3-venv python3-pip curl ca-certificates
 
 if ! command -v node >/dev/null 2>&1 || ! node -e "process.exit(Number(process.versions.node.split('.')[0]) >= 22 ? 0 : 1)"; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
