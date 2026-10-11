@@ -15,7 +15,7 @@ import {
   Sparkles,
 } from '@lucide/vue'
 
-const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const modes = [
   { id: 'chat', label: '课程答疑', endpoint: '/api/chat', icon: BookOpen },
