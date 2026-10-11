@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5173",
+    "dev": "vite --host 127.0.0.1 --port 5180 --strictPort",
+    "dev:host": "vite --host 0.0.0.0 --port 5180 --strictPort",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4173"
+    "preview": "vite preview --host 127.0.0.1 --port 4180 --strictPort",
+    "preview:host": "vite preview --host 0.0.0.0 --port 4180 --strictPort"
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^6.0.1",

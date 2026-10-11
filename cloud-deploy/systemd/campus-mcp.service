@@ -1,0 +1,14 @@
+[Unit]
+Description=Campus Coding Assistant MCP RAG server
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/campus-assistant.env
+WorkingDirectory=/opt/campus-assistant/repo/mcp-rag
+ExecStart=/bin/bash /opt/campus-assistant/repo/cloud-deploy/scripts/start_mcp.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

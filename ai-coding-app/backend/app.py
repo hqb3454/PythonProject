@@ -166,6 +166,12 @@ async def add_knowledge(payload: AddKnowledgeRequest) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
+    import os
     import uvicorn
 
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run(
+        "app:app",
+        host=os.environ.get("API_HOST", "127.0.0.1"),
+        port=int(os.environ.get("API_PORT", "8000")),
+        reload=os.environ.get("API_RELOAD", "true").lower() == "true",
+    )

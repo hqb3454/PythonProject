@@ -15,7 +15,7 @@ import {
   Sparkles,
 } from '@lucide/vue'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000'
+const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 
 const modes = [
   { id: 'chat', label: '课程答疑', endpoint: '/api/chat', icon: BookOpen },
@@ -182,7 +182,7 @@ onMounted(refreshHealth)
           <AlertTriangle v-else :size="16" aria-hidden="true" />
           <span>{{ health?.ok ? 'MCP 已连接' : 'MCP 未连接' }}</span>
         </div>
-        <p class="status-detail">{{ health?.mcp?.url || 'http://127.0.0.1:8765/mcp' }}</p>
+        <p class="status-detail">{{ health?.mcp?.url || '由后端代理连接 MCP' }}</p>
       </section>
     </aside>
 

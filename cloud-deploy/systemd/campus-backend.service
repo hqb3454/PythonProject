@@ -1,0 +1,15 @@
+[Unit]
+Description=Campus Coding Assistant FastAPI backend
+After=network.target campus-mcp.service
+Wants=campus-mcp.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/campus-assistant.env
+WorkingDirectory=/opt/campus-assistant/repo/ai-coding-app/backend
+ExecStart=/bin/bash /opt/campus-assistant/repo/cloud-deploy/scripts/start_backend.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
