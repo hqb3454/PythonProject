@@ -1,0 +1,14 @@
+[Unit]
+Description=Campus Coding Assistant Vue frontend (Vite dev)
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/campus-assistant.env
+WorkingDirectory=/opt/campus-assistant/repo/ai-coding-app/frontend
+ExecStart=/usr/local/bin/npm run dev
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

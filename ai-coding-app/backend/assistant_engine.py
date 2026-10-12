@@ -222,15 +222,25 @@ def _maybe_call_llm(prompt: str) -> Optional[Tuple[str, str]]:
             from openai import OpenAI
 
             client = OpenAI(api_key=config["api_key"], base_url=config["base_url"])
+            # 推理模型（如 kimi-k2 / deepseek-reasoner / o1 等）通常只允许 temperature=1，
+            # 且最终答案有时写在 reasoning_content 字段。普通模型保持可调温度。
+            model_l = config["model"].lower()
+            if any(k in model_l for k in ("k2", "reason", "thinking", "r1", "deepseek-reasoner")):
+                temperature = 1.0
+            else:
+                temperature = float(os.environ.get("LLM_TEMPERATURE", "0.2"))
             resp = client.chat.completions.create(
                 model=config["model"],
                 messages=[
                     {"role": "system", "content": _system_prompt()},
                     {"role": "user", "content": prompt},
                 ],
-                temperature=float(os.environ.get("LLM_TEMPERATURE", "0.2")),
+                temperature=temperature,
             )
-            text = resp.choices[0].message.content or ""
+            msg = resp.choices[0].message
+            text = getattr(msg, "content", None) or ""
+            if not text:  # 推理模型偶尔把答案放在 reasoning_content
+                text = getattr(msg, "reasoning_content", None) or ""
             if text:
                 return text.strip(), f'{config["provider"]}:{config["model"]}'
         except Exception:
