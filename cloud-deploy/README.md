@@ -159,37 +159,56 @@ source /opt/campus-assistant/venv/bin/activate
 python cloud-deploy/scripts/verify_models.py
 ```
 
-## 4. 启动三个服务
+## 4. 启动 / 重启三个服务（重要）
 
-终端 1：启动 MCP。
+三个服务由 **systemd** 托管（campus-mcp / campus-backend / campus-frontend），
+默认开机自启、崩溃自动重启，并已绑定 8766 / 8000 / 5180 三个端口。
+
+> 警告：不要直接运行 start_mcp.sh 等脚本！
+> 因为 systemd 已经在接管这些进程，且配置了 Restart=always，
+> 即使你 pkill 掉，systemd 也会立刻重新拉起并重新占用端口，
+> 手动运行脚本必然报 Address already in use (Errno 98)。
+
+### 日常管理（推荐，唯一正确方式）
 
 ```bash
+# 改完代码 / 拉取新版本后，一键重启让改动生效：
+systemctl restart campus-mcp campus-backend campus-frontend
+
+# 查看状态
+systemctl status campus-mcp campus-backend campus-frontend
+
+# 实时看日志
+journalctl -u campus-mcp -f
+journalctl -u campus-backend -f
+journalctl -u campus-frontend -f
+
+# 停止 / 关闭开机自启
+systemctl stop campus-mcp campus-backend campus-frontend
+systemctl disable campus-mcp campus-backend campus-frontend
+```
+
+### 一键重启脚本（等效于上面的 restart 命令）
+
+```bash
+bash cloud-deploy/scripts/restart_services.sh
+```
+
+### 仅临时手动前台运行（了解即可，不推荐）
+
+只有先停掉 systemd 服务，才能手动跑脚本，否则必冲突：
+
+```bash
+systemctl stop campus-mcp campus-backend campus-frontend
 cd /opt/campus-assistant/repo
 source /opt/campus-assistant/venv/bin/activate
-export APP_ROOT=/opt/campus-assistant
-export REPO_DIR=/opt/campus-assistant/repo
-export RAG_MODEL_DIR=/opt/campus-assistant/models
-bash cloud-deploy/scripts/start_mcp.sh
+export APP_ROOT=/opt/campus-assistant REPO_DIR=/opt/campus-assistant/repo RAG_MODEL_DIR=/opt/campus-assistant/models
+bash cloud-deploy/scripts/start_mcp.sh          # 终端 1
+bash cloud-deploy/scripts/start_backend.sh      # 终端 2
+bash cloud-deploy/scripts/start_frontend_dev.sh # 终端 3
 ```
 
-终端 2：启动 FastAPI。
-
-```bash
-cd /opt/campus-assistant/repo
-source /opt/campus-assistant/venv/bin/activate
-export APP_ROOT=/opt/campus-assistant
-export REPO_DIR=/opt/campus-assistant/repo
-bash cloud-deploy/scripts/start_backend.sh
-```
-
-终端 3：启动 Vue。
-
-```bash
-cd /opt/campus-assistant/repo
-export APP_ROOT=/opt/campus-assistant
-export REPO_DIR=/opt/campus-assistant/repo
-bash cloud-deploy/scripts/start_frontend_dev.sh
-```
+注意：手动前台方式关闭终端后服务会退出；长期运行请用上面的 systemd 方式。
 
 ## 5. 在本地电脑建立 SSH 隧道
 
