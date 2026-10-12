@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """查看向量数据库（chromadb）内容：列出 collections、每条向量的 id/metadata/维度/文本。"""
 import sys
+import os
 
 import chromadb
 
-DB = r"F:\PythonProject\mcp-rag\knowledge"
+DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge")
 INCLUDE = ["embeddings", "documents", "metadatas"]
 
 
