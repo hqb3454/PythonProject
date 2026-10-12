@@ -1,17 +1,28 @@
 # -*- coding: utf-8 -*-
 """Answer composition for the campus coding assistant.
 
-The backend prefers a configured LLM when available, but keeps a deterministic
-fallback so the competition demo still works without network access or API keys.
+支持两种大模型接入方式（自动选择可用者）：
+1. Gemini（google-genai）：云主机默认，配置 GEMINI_API_KEY / GOOGLE_API_KEY 即可。
+2. OpenAI / Kimi 等 OpenAI 兼容接口：配置 OPENAI_API_KEY 或 KIMI_API_KEY。
+
+调用模型所需的 api key 写入环境变量（或 .env），不要写进 py 文件。
+未配置任何 key 或调用失败时，回退到确定性的本地模板，保证 demo 始终可用。
 """
 
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    pass
 
 
-def _context_excerpt(raw_context: str, limit: int = 900) -> str:
+def _context_excerpt(raw_context: str, limit: int = 1200) -> str:
     text = raw_context.strip()
     if len(text) <= limit:
         return text
@@ -147,19 +158,85 @@ def _fallback_response(
     }
 
 
-def _maybe_call_llm(prompt: str) -> Optional[str]:
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
-        return None
-    try:
-        from google import genai
+def _llm_config() -> Optional[Dict[str, str]]:
+    kimi_key = os.environ.get("KIMI_API_KEY") or os.environ.get("MOONSHOT_API_KEY")
+    openai_key = os.environ.get("OPENAI_API_KEY")
 
-        model = os.environ.get("CAMPUS_ASSISTANT_MODEL", "gemini-2.5-flash")
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(model=model, contents=prompt)
-        return getattr(response, "text", None)
-    except Exception:
-        return None
+    if kimi_key:
+        return {
+            "provider": "kimi-openai-compatible",
+            "api_key": kimi_key,
+            "base_url": os.environ.get("KIMI_BASE_URL")
+            or os.environ.get("MOONSHOT_BASE_URL")
+            or "https://api.moonshot.ai/v1",
+            "model": os.environ.get("KIMI_MODEL") or os.environ.get("LLM_MODEL") or "moonshot-v1-8k",
+        }
+
+    if openai_key:
+        return {
+            "provider": "openai",
+            "api_key": openai_key,
+            "base_url": os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1",
+            "model": os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_MODEL") or "gpt-4o-mini",
+        }
+
+    return None
+
+
+def _system_prompt() -> str:
+    return """你是校园代码智能助手，服务对象是正在学习数据结构、算法和编程课程的学生。
+
+必须遵守：
+1. 优先结合 RAG 知识库上下文回答；如果上下文不足，要明确说明，并给出通用推理。
+2. 不要编造知识库来源，不要声称引用了不存在的文档。
+3. 回答要适合教学：先讲思路，再给代码或排错建议。
+4. 对代码生成、Bug 修复、测试生成任务，尽量给出可直接运行的 Python 示例。
+"""
+
+
+def _maybe_call_llm(prompt: str) -> Optional[Tuple[str, str]]:
+    """尝试调用大模型，返回 (文本, provider 名称)；都不可用时返回 None。
+
+    优先级：Gemini (google-genai) -> OpenAI / Kimi (OpenAI 兼容)。
+    openai 包在云主机上可能未安装，采用懒加载，缺失时安全跳过。
+    """
+    # 1) Gemini (google-genai)，云主机默认可用
+    gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if gemini_key:
+        try:
+            from google import genai
+
+            model = os.environ.get("CAMPUS_ASSISTANT_MODEL", "gemini-2.5-flash")
+            client = genai.Client(api_key=gemini_key)
+            response = client.models.generate_content(model=model, contents=prompt)
+            text = getattr(response, "text", None)
+            if text:
+                return text.strip(), "google-genai"
+        except Exception:
+            pass  # 失败则继续尝试 OpenAI
+
+    # 2) OpenAI / Kimi (OpenAI 兼容)
+    config = _llm_config()
+    if config:
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(api_key=config["api_key"], base_url=config["base_url"])
+            resp = client.chat.completions.create(
+                model=config["model"],
+                messages=[
+                    {"role": "system", "content": _system_prompt()},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=float(os.environ.get("LLM_TEMPERATURE", "0.2")),
+            )
+            text = resp.choices[0].message.content or ""
+            if text:
+                return text.strip(), f'{config["provider"]}:{config["model"]}'
+        except Exception:
+            pass
+
+    return None
 
 
 def compose_response(
@@ -179,9 +256,9 @@ def compose_response(
 知识库上下文：
 {raw_context or "无命中"}
 """
-    llm_text = _maybe_call_llm(prompt)
+    llm = _maybe_call_llm(prompt)
     fallback = _fallback_response(mode, query, code, language, raw_context)
-    if llm_text:
-        fallback["answer"] = llm_text
-        fallback["provider"] = "google-genai"
+    if llm:
+        fallback["answer"] = llm[0]
+        fallback["provider"] = llm[1]
     return fallback

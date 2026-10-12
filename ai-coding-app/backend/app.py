@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""FastAPI backend for the campus coding assistant demo."""
+'''该文件创建了fastapi应用并且调用了很多函数，注意它导入的两个文件'''
 
 from __future__ import annotations
 

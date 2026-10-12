@@ -109,6 +109,12 @@ bash cloud-deploy/scripts/install_bclinux.sh
 
 如果安装 Node.js 时出现 `This script is intended for RPM-based systems`，这是 NodeSource 没有识别 BC-Linux 发行版导致的。新版 `install_bclinux.sh` 会自动回退到 Node.js 官方二进制包安装。
 
+本项目当前使用 MCP Python SDK v1 API，因此依赖会固定为 `mcp>=1,<2`。如果云主机已经装过 `mcp 2.x`，重新执行安装脚本会自动降级；也可以手动执行：
+
+```bash
+/opt/campus-assistant/venv/bin/python -m pip install "mcp>=1.0.0,<2.0.0" --force-reinstall
+```
+
 如果是 Ubuntu，才使用：
 
 ```bash
@@ -233,6 +239,16 @@ http://127.0.0.1:8000/api/health
 
 ```text
 http://127.0.0.1:18000/api/health
+```
+
+## 7. 配置大模型
+
+系统已经支持 `RAG 检索 + 大模型生成`。如果不配置 key，会自动回退到本地模板回答。
+
+配置方式见：
+
+```text
+cloud-deploy/LLM_CONFIG.md
 ```
 
 ## 安全组要求

@@ -53,6 +53,7 @@ npm --version
 python3 -m venv "$APP_ROOT/venv"
 "$APP_ROOT/venv/bin/python" -m pip install --upgrade pip
 "$APP_ROOT/venv/bin/python" -m pip install -r "$REPO_DIR/cloud-deploy/requirements-server.txt"
+"$APP_ROOT/venv/bin/python" -c "import importlib.metadata as m; print('mcp', m.version('mcp'))"
 
 echo "APP_ROOT=$APP_ROOT"
 echo "REPO_DIR=$REPO_DIR"

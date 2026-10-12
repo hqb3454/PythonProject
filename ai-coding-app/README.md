@@ -50,7 +50,7 @@ npm run dev
 
 如果迁移到云主机但不开放 Web 公网端口，保持 `npm run dev` 即可让 Vue 监听云主机本机 `127.0.0.1:5180`，再用 SSH 隧道从本地电脑访问。具体命令见 `cloud-deploy/README.md`。
 
-如果配置了 `GEMINI_API_KEY` 或 `GOOGLE_API_KEY`，后端会尝试调用 `google-genai`；否则使用本地可演示的降级生成逻辑，仍会展示 RAG 引用、代码模板、测试用例和修复建议。
+如果配置了 `OPENAI_API_KEY`，后端会调用 OpenAI-compatible Chat Completions，把用户问题和 MCP RAG 检索结果一起交给大模型生成回答。如果配置了 `KIMI_API_KEY`，则使用 Kimi/Moonshot 的 OpenAI-compatible API。否则使用本地可演示的降级生成逻辑，仍会展示 RAG 引用、代码模板、测试用例和修复建议。
 
 ## API
 
