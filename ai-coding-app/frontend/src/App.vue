@@ -1,5 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import {
   AlertTriangle,
   BookOpen,
@@ -52,6 +54,13 @@ const references = computed(() => result.value?.references || [])
 const diagnostics = computed(() => result.value?.diagnostics || [])
 const testCases = computed(() => result.value?.test_cases || [])
 const generatedCode = computed(() => result.value?.generated_code || '')
+
+const answerHtml = computed(() => {
+  const raw = result.value?.answer || ''
+  if (!raw) return ''
+  const html = marked.parse(raw, { gfm: true, breaks: true })
+  return DOMPurify.sanitize(html)
+})
 
 function setMode(id) {
   activeMode.value = id
@@ -264,7 +273,7 @@ onMounted(refreshHealth)
               <span>回答</span>
               <small v-if="result?.provider">{{ result.provider }}</small>
             </div>
-            <p v-if="result?.answer" class="answer-text">{{ result.answer }}</p>
+            <div v-if="result?.answer" class="answer-text markdown-body" v-html="answerHtml"></div>
             <p v-else class="empty-text">等待运行结果</p>
           </article>
 
