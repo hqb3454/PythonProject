@@ -2,11 +2,11 @@
 
 本目录用于把 `校园代码智能助手` 放到云主机上运行，但不开放 Web 公网端口。当前方案适合学习、测试和比赛前自测：
 
-- 不使用 Nginx。
-- 不使用 `80`、`8080`、`443`、`8443`。
+- 使用 **Nginx 作为统一入口**，监听 `127.0.0.1:5180`（静态托管 + 反向代理 `/api`）。
+- 不使用 `80`、`8080`、`443`、`8443` 公网端口。
 - 云平台安全组只需要开放 `22`，用于 SSH/VSCode Remote SSH。
-- Vue、FastAPI、MCP 都只监听云主机自己的 `127.0.0.1`。
-- 你在本地电脑通过 SSH 隧道访问云主机里的 Vue 页面。
+- Nginx、FastAPI、MCP 都只监听云主机自己的 `127.0.0.1`。
+- 你在本地电脑通过 SSH 隧道访问云主机里的页面，**只需转发一个端口**。
 
 你的云主机信息：
 
@@ -19,16 +19,17 @@
 云主机内部运行：
 
 ```text
-Vue dev server: 127.0.0.1:5180
+nginx 统一入口:  127.0.0.1:5180  (frontend/dist 静态文件 + /api 反代)
 FastAPI 后端:   127.0.0.1:8000
 HTTP MCP RAG:   127.0.0.1:8766
 ```
+
+原来的 Vite dev server（campus-frontend 服务）已由 nginx 取代并停用。
 
 你的本地电脑建立 SSH 隧道：
 
 ```text
 本地 127.0.0.1:5180 -> 云主机 127.0.0.1:5180
-本地 127.0.0.1:8000 -> 云主机 127.0.0.1:8000
 ```
 
 然后你在本地浏览器打开：
@@ -37,7 +38,7 @@ HTTP MCP RAG:   127.0.0.1:8766
 http://127.0.0.1:5180/
 ```
 
-页面其实是云主机上的 Vue 服务返回的。
+页面是云主机上的 nginx 返回的静态文件，`/api` 请求也由 nginx 在云主机内部转发给 FastAPI——所以本地只需要转发 5180 这一个端口。
 
 ## 关于 `/api`
 
@@ -49,12 +50,20 @@ http://127.0.0.1:5180/
 /api/code/generate
 ```
 
-在这个 SSH 隧道测试方案里，不需要 Nginx。Vue 开发服务器 Vite 会把 `/api` 转发到云主机内部的 FastAPI：
+在这个 SSH 隧道测试方案里，`/api` 由 nginx 转发到云主机内部的 FastAPI：
 
 ```text
-Vue/Vite 127.0.0.1:5180
+nginx 127.0.0.1:5180
   -> /api
   -> FastAPI 127.0.0.1:8000
+```
+
+nginx 配置文件在仓库里：`cloud-deploy/nginx/campus.conf`，云主机上的生效路径是
+`/etc/nginx/conf.d/campus.conf`。改了仓库里的配置后需要复制过去并 reload：
+
+```bash
+cp cloud-deploy/nginx/campus.conf /etc/nginx/conf.d/campus.conf
+nginx -t && systemctl reload nginx
 ```
 
 FastAPI 再访问 MCP：
@@ -106,6 +115,14 @@ bash cloud-deploy/scripts/install_bclinux.sh
 - Node.js / npm
 - curl / ca-certificates
 - Python 依赖：FastAPI、MCP、ChromaDB、sentence-transformers 等
+
+额外还需要安装 nginx（统一入口）并构建前端：
+
+```bash
+dnf install -y nginx
+cp cloud-deploy/nginx/campus.conf /etc/nginx/conf.d/campus.conf
+cd ai-coding-app/frontend && npm install && npm run build
+```
 
 如果安装 Node.js 时出现 `This script is intended for RPM-based systems`，这是 NodeSource 没有识别 BC-Linux 发行版导致的。新版 `install_bclinux.sh` 会自动回退到 Node.js 官方二进制包安装。
 
@@ -159,33 +176,39 @@ source /opt/campus-assistant/venv/bin/activate
 python cloud-deploy/scripts/verify_models.py
 ```
 
-## 4. 启动 / 重启三个服务（重要）
+## 4. 启动 / 重启服务（重要）
 
-三个服务由 **systemd** 托管（campus-mcp / campus-backend / campus-frontend），
-默认开机自启、崩溃自动重启，并已绑定 8766 / 8000 / 5180 三个端口。
+服务由 **systemd** 托管：`campus-mcp`(8766) / `campus-backend`(8000) / `nginx`(5180)，
+默认开机自启、崩溃自动重启。前端由 nginx 托管 `frontend/dist` 静态文件并反代 `/api`。
 
 > 警告：不要直接运行 start_mcp.sh 等脚本！
 > 因为 systemd 已经在接管这些进程，且配置了 Restart=always，
 > 即使你 pkill 掉，systemd 也会立刻重新拉起并重新占用端口，
 > 手动运行脚本必然报 Address already in use (Errno 98)。
+>
+> campus-frontend（Vite dev server）已被 nginx 取代并停用，保留服务文件仅供回滚。
 
 ### 日常管理（推荐，唯一正确方式）
 
 ```bash
-# 改完代码 / 拉取新版本后，一键重启让改动生效：
-systemctl restart campus-mcp campus-backend campus-frontend
+# 改完后端 / MCP 代码后，一键重启让改动生效：
+systemctl restart campus-mcp campus-backend
+
+# 改动前端源码后：先构建，再 reload nginx（静态文件即时生效）
+cd ai-coding-app/frontend && npm run build
+systemctl reload nginx
 
 # 查看状态
-systemctl status campus-mcp campus-backend campus-frontend
+systemctl status campus-mcp campus-backend nginx
 
 # 实时看日志
 journalctl -u campus-mcp -f
 journalctl -u campus-backend -f
-journalctl -u campus-frontend -f
+journalctl -u nginx -f
 
 # 停止 / 关闭开机自启
-systemctl stop campus-mcp campus-backend campus-frontend
-systemctl disable campus-mcp campus-backend campus-frontend
+systemctl stop campus-mcp campus-backend nginx
+systemctl disable campus-mcp campus-backend nginx
 ```
 
 ### 一键重启脚本（等效于上面的 restart 命令）
@@ -199,23 +222,22 @@ bash cloud-deploy/scripts/restart_services.sh
 只有先停掉 systemd 服务，才能手动跑脚本，否则必冲突：
 
 ```bash
-systemctl stop campus-mcp campus-backend campus-frontend
+systemctl stop campus-mcp campus-backend nginx
 cd /opt/campus-assistant/repo
 source /opt/campus-assistant/venv/bin/activate
 export APP_ROOT=/opt/campus-assistant REPO_DIR=/opt/campus-assistant/repo RAG_MODEL_DIR=/opt/campus-assistant/models
 bash cloud-deploy/scripts/start_mcp.sh          # 终端 1
 bash cloud-deploy/scripts/start_backend.sh      # 终端 2
-bash cloud-deploy/scripts/start_frontend_dev.sh # 终端 3
 ```
 
 注意：手动前台方式关闭终端后服务会退出；长期运行请用上面的 systemd 方式。
 
 ## 5. 在本地电脑建立 SSH 隧道
 
-在你自己的 Windows PowerShell 里执行：
+在你自己的 Windows PowerShell 里执行（只需转发一个端口）：
 
 ```powershell
-ssh -L 5180:127.0.0.1:5180 -L 8000:127.0.0.1:8000 root@36.213.141.60
+ssh -L 5180:127.0.0.1:5180 root@36.213.141.60
 ```
 
 这个 SSH 窗口保持打开。然后本地浏览器访问：
@@ -227,7 +249,7 @@ http://127.0.0.1:5180/
 如果你本地 `5180` 已经被占用，可以换成本地 `15180`：
 
 ```powershell
-ssh -L 15180:127.0.0.1:5180 -L 18000:127.0.0.1:8000 root@36.213.141.60
+ssh -L 15180:127.0.0.1:5180 root@36.213.141.60
 ```
 
 然后访问：
@@ -236,28 +258,21 @@ ssh -L 15180:127.0.0.1:5180 -L 18000:127.0.0.1:8000 root@36.213.141.60
 http://127.0.0.1:15180/
 ```
 
-注意：这种情况下页面仍然正常，因为页面的 `/api` 请求会先到本地 `15180`，再通过 SSH 隧道进入云主机的 Vite，最后由 Vite proxy 转给云主机的 FastAPI。
+注意：这种情况下页面仍然正常，因为页面的 `/api` 请求会先到本地 `15180`，
+通过 SSH 隧道进入云主机的 nginx，再由 nginx 转给云主机的 FastAPI。
 
 ## 6. 验证后端
 
 在云主机上执行：
 
 ```bash
-cd /opt/campus-assistant/repo
-source /opt/campus-assistant/venv/bin/activate
-python cloud-deploy/scripts/smoke_test.py
+curl http://127.0.0.1:5180/api/health
 ```
 
 或者在已经建立 SSH 隧道的本地电脑访问：
 
 ```text
-http://127.0.0.1:8000/api/health
-```
-
-如果你用的是 `18000` 映射：
-
-```text
-http://127.0.0.1:18000/api/health
+http://127.0.0.1:5180/api/health
 ```
 
 ## 7. 配置大模型
