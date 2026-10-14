@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, List, Literal
 
 from fastapi import FastAPI, HTTPException
@@ -19,6 +20,10 @@ class AssistantRequest(BaseModel):
     language: str = Field("python", description="Target programming language")
     top_k: int = Field(10, ge=1, le=50)
     top_n: int = Field(5, ge=1, le=50)
+    intensity: Literal["fast", "standard", "detailed"] = Field(
+        "standard",
+        description="chat 模式的回答强度：fast 直接引用知识库(秒回) / standard 快模型精简 / detailed 深度详解含易错点",
+    )
 
 
 class AddKnowledgeRequest(BaseModel):
@@ -74,8 +79,11 @@ async def _search(corpus: Literal["code", "course"], payload: AssistantRequest) 
 
 async def _handle(mode: Literal["chat", "generate", "explain", "debug", "testcase"], payload: AssistantRequest) -> Dict[str, Any]:
     if mode == "chat":
-        course = await _search("course", payload)
-        code = await _search("code", payload)
+        # 两个知识库并行检索，缩短等待时间
+        course, code = await asyncio.gather(
+            _search("course", payload),
+            _search("code", payload),
+        )
         raw_context = "\n\n".join(part for part in [course["raw_text"], code["raw_text"]] if part)
         references: List[Dict[str, Any]] = course["references"] + code["references"]
         mcp_status = {"course": course, "code": code}
@@ -91,6 +99,7 @@ async def _handle(mode: Literal["chat", "generate", "explain", "debug", "testcas
         code=payload.code,
         language=payload.language,
         raw_context=raw_context,
+        intensity=payload.intensity,
     )
     return {
         "mode": mode,

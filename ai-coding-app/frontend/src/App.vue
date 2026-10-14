@@ -34,6 +34,13 @@ const healthLoading = ref(false)
 const error = ref('')
 const health = ref(null)
 const result = ref(null)
+const intensity = ref('standard')
+
+const intensityOptions = [
+  { id: 'fast', label: '快速', desc: '秒回 · 直接引用知识库命中，不调大模型' },
+  { id: 'standard', label: '标准', desc: '快模型精简回答，速度优先' },
+  { id: 'detailed', label: '详细', desc: '深度思考，含易错点详解，耗时较长' },
+]
 
 const form = reactive({
   question: '二叉树的层序遍历怎么写？',
@@ -120,6 +127,7 @@ async function submitTask() {
           language: form.language,
           top_k: Number(form.top_k),
           top_n: Number(form.top_n),
+          intensity: intensity.value,
         }
     const response = await fetch(`${API_BASE}${mode.endpoint}`, {
       method: 'POST',
@@ -242,6 +250,25 @@ onMounted(refreshHealth)
                 <span>top_n</span>
                 <input v-model.number="form.top_n" type="number" min="1" max="50" />
               </label>
+            </div>
+            <div v-if="activeMode === 'chat'" class="intensity-panel">
+              <span class="field-label">回答强度</span>
+              <div class="intensity-options">
+                <label
+                  v-for="opt in intensityOptions"
+                  :key="opt.id"
+                  class="intensity-option"
+                  :class="{ active: intensity === opt.id }"
+                >
+                  <input v-model="intensity" type="radio" name="intensity" :value="opt.id" />
+                  <span class="opt-label">{{ opt.label }}</span>
+                  <span class="opt-desc">{{ opt.desc }}</span>
+                </label>
+              </div>
+              <p v-if="intensity === 'detailed'" class="intensity-hint">
+                <AlertTriangle :size="14" aria-hidden="true" />
+                详细模式会调用深度思考模型，通常需要 20–60 秒，请耐心等待。
+              </p>
             </div>
           </template>
 
