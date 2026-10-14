@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """本地模型加载层。
 
+本py文件完成的工作:导入本地embedding模型,对传入数据库的文本进行向量化以及对用户提出的问题进行向量化。导入重排模型,顺便完成重排功能.
+
 - embedding：sentence-transformers（text2vec-base-chinese，中文语义向量），用于「召回」阶段；
 - 重排：cross-encoder（mmarco-mMiniLMv2-L12-H384-v1），用于「精筛」阶段对 (query, chunk) 打分。
 
