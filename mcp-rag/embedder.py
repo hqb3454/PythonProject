@@ -5,7 +5,12 @@
 - 重排：cross-encoder（mmarco-mMiniLMv2-L12-H384-v1），用于「精筛」阶段对 (query, chunk) 打分。
 
 两个模型均为本地文件（默认放在 F:\\PythonProject\\models），离线加载、无需联网调用。
-可通过环境变量 RAG_MODEL_DIR 覆盖模型根目录。
+
+
+通过os.environ.get获取环境变量 RAG_MODEL_DIR,而不使用固定目录,这样在迁移到另一台主机或者云主机的时候，只需要把模型下载到另一台主机即可,并且添加环境变量
+虽然和修改路径差不多，但是添加到环境变量之后，以后需要模型路径时直需要使用RAG_MODEL_DIR即可，很方便
+
+
 """
 
 import os
