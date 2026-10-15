@@ -35,6 +35,7 @@ const error = ref('')
 const health = ref(null)
 const result = ref(null)
 const intensity = ref('standard')
+const abortController = ref(null)
 
 const intensityOptions = [
   { id: 'fast', label: '快速', desc: '秒回 · 直接引用知识库命中，不调大模型' },
@@ -70,6 +71,12 @@ const answerHtml = computed(() => {
 })
 
 function setMode(id) {
+  // 切换模式时取消进行中的请求，避免旧请求卡住界面
+  if (abortController.value) {
+    abortController.value.abort()
+    abortController.value = null
+  }
+  loading.value = false
   activeMode.value = id
   error.value = ''
   if (id === 'generate') {
@@ -129,10 +136,12 @@ async function submitTask() {
           top_n: Number(form.top_n),
           intensity: intensity.value,
         }
+    abortController.value = new AbortController()
     const response = await fetch(`${API_BASE}${mode.endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: abortController.value.signal,
     })
     const data = await response.json()
     if (!response.ok) {
@@ -151,9 +160,14 @@ async function submitTask() {
       : data
     await refreshHealth()
   } catch (err) {
-    error.value = err.message
+    if (err.name === 'AbortError') {
+      error.value = '已取消'
+    } else {
+      error.value = err.message
+    }
   } finally {
     loading.value = false
+    abortController.value = null
   }
 }
 

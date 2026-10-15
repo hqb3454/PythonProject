@@ -9,4 +9,4 @@ export API_PORT="${API_PORT:-8000}"
 export API_RELOAD="${API_RELOAD:-false}"
 
 cd "$REPO_DIR/ai-coding-app/backend"
-"$APP_ROOT/venv/bin/python" -m uvicorn app:app --host "$API_HOST" --port "$API_PORT"
+"$APP_ROOT/venv/bin/python" -m uvicorn app:app --host "$API_HOST" --port "$API_PORT" --workers 4

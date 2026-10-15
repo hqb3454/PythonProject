@@ -93,7 +93,7 @@ async def _handle(mode: Literal["chat", "generate", "explain", "debug", "testcas
         references = result["references"]
         mcp_status = {"code": result}
 
-    composed = assistant_engine.compose_response(
+    composed = await assistant_engine.compose_response(
         mode=mode,
         query=payload.question,
         code=payload.code,

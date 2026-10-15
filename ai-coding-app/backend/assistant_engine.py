@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -76,7 +77,7 @@ def level_order(root):
     return quick_sort(left) + mid + quick_sort(right)
 """
     return """def solve():
-    \"\"\"根据题目要求补充输入解析、核心算法和输出逻辑。\"\"\"
+    \"\""根据题目要求补充输入解析、核心算法和输出逻辑。\"\""
     pass
 """
 
@@ -166,8 +167,6 @@ def _llm_config(which: str = "default") -> Optional[Dict[str, str]]:
 
     if kimi_key:
         if which == "fast":
-            # 快速档优先用轻量模型；未配置或无权限时回退到主模型
-            # （主模型若为 kimi-k2 等推理模型，会走“免思考”快速模式，见 _maybe_call_llm）
             model = (
                 os.environ.get("KIMI_FAST_MODEL")
                 or os.environ.get("LLM_FAST_MODEL")
@@ -208,13 +207,8 @@ def _system_prompt() -> str:
 """
 
 
-def _maybe_call_llm(prompt: str, model_kind: str = "default") -> Optional[Tuple[str, str]]:
-    """尝试调用大模型，返回 (文本, provider 名称)；都不可用时返回 None。
-
-    model_kind: "fast" 用轻量模型（响应快）；其他用默认模型（可能为推理模型，更慢更强）。
-    优先级：Gemini (google-genai) -> OpenAI / Kimi (OpenAI 兼容)。
-    openai 包在云主机上可能未安装，采用懒加载，缺失时安全跳过。
-    """
+def _sync_call_llm(prompt: str, model_kind: str = "default") -> Optional[Tuple[str, str]]:
+    """同步版本的大模型调用，供 asyncio.to_thread 包装使用。"""
     # 1) Gemini (google-genai)，云主机默认可用
     gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if gemini_key:
@@ -237,10 +231,6 @@ def _maybe_call_llm(prompt: str, model_kind: str = "default") -> Optional[Tuple[
             from openai import OpenAI
 
             client = OpenAI(api_key=config["api_key"], base_url=config["base_url"])
-            # 推理模型（如 kimi-k2 / deepseek-reasoner / o1 等）的温度有硬约束：
-            #   - 正常思考：只允许 temperature=1，答案有时写在 reasoning_content；
-            #   - 免思考快速档（standard 用）：kimi-k2 支持 thinking=disabled，此时必须 temperature=0.6，
-            #     响应从 ~30s+ 降到秒级。
             model_l = config["model"].lower()
             is_reasoning = any(k in model_l for k in ("k2", "reason", "thinking", "r1", "deepseek-reasoner"))
             extra_kwargs: Dict[str, Any] = {}
@@ -272,18 +262,16 @@ def _maybe_call_llm(prompt: str, model_kind: str = "default") -> Optional[Tuple[
     return None
 
 
+async def _maybe_call_llm(prompt: str, model_kind: str = "default") -> Optional[Tuple[str, str]]:
+    """异步包装：将同步 LLM 调用放到线程池执行，避免阻塞事件循环。"""
+    return await asyncio.to_thread(_sync_call_llm, prompt, model_kind)
+
+
 _HIT_RE = re.compile(r"^\[\d+\] 来源: (?P<source>.+?) \(chunk", re.M)
 
 
 def _kb_direct_answer(raw_context: str, max_hits: int = 2, per_hit: int = 500) -> str:
-    """chat 快速模式：不调用大模型，直接呈现知识库最相关的命中内容。
-
-    raw_context 是 MCP 检索工具的人类可读输出，格式为：
-        检索到 N 条相关内容（按语义相似度精筛排序）：
-        [1] 来源: xxx.md (chunk 0, 分 -1.23)
-        <内容>
-        [2] ...
-    """
+    """chat 快速模式：不调用大模型，直接呈现知识库最相关的命中内容。"""
     if not raw_context.strip():
         return (
             "（快速回答）知识库未检索到与问题直接相关的内容。\n\n"
@@ -315,7 +303,7 @@ def _kb_direct_answer(raw_context: str, max_hits: int = 2, per_hit: int = 500) -
     return header + "\n\n" + "\n\n".join(blocks)
 
 
-def compose_response(
+async def compose_response(
     mode: str,
     query: str,
     code: str,
@@ -331,7 +319,6 @@ def compose_response(
         return fallback
 
     if mode == "chat" and intensity == "detailed":
-        # 详细模式：默认模型（可为推理模型），要求讲解充分、含易错点，耗时较长
         prompt = f"""你是校园代码智能助手。请用中文**详细**回答，结合知识库上下文，避免编造来源。
 
 要求：
@@ -348,9 +335,8 @@ def compose_response(
 知识库上下文：
 {raw_context or "无命中"}
 """
-        llm = _maybe_call_llm(prompt, model_kind="default")
+        llm = await _maybe_call_llm(prompt, model_kind="default")
     elif mode == "chat":
-        # 标准模式：轻量模型 + 精简回答，优先保证响应速度
         prompt = f"""你是校园代码智能助手。请用中文回答，结合知识库上下文，避免编造来源。
 
 要求：**精简**，控制在 250 字以内；先直接给结论，再用 1-2 句补充要点。
@@ -361,7 +347,7 @@ def compose_response(
 知识库上下文：
 {raw_context or "无命中"}
 """
-        llm = _maybe_call_llm(prompt, model_kind="fast")
+        llm = await _maybe_call_llm(prompt, model_kind="fast")
     else:
         prompt = f"""你是校园代码智能助手。请用中文回答，结合知识库上下文，避免编造来源。
 
@@ -373,7 +359,7 @@ def compose_response(
 知识库上下文：
 {raw_context or "无命中"}
 """
-        llm = _maybe_call_llm(prompt)
+        llm = await _maybe_call_llm(prompt)
 
     fallback = _fallback_response(mode, query, code, language, raw_context)
     if llm:
