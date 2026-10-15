@@ -12,9 +12,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
+
+# 限制同时调用大模型的并发数，避免 API 限流（429）
+_LLM_SEMAPHORE = asyncio.Semaphore(2)
+
+logger = logging.getLogger(__name__)
 
 try:
     from dotenv import load_dotenv
@@ -221,8 +227,8 @@ def _sync_call_llm(prompt: str, model_kind: str = "default") -> Optional[Tuple[s
             text = getattr(response, "text", None)
             if text:
                 return text.strip(), "google-genai"
-        except Exception:
-            pass  # 失败则继续尝试 OpenAI
+        except Exception as exc:
+            logger.warning("Gemini call failed: %s", exc)
 
     # 2) OpenAI / Kimi (OpenAI 兼容)
     config = _llm_config(model_kind)
@@ -256,15 +262,17 @@ def _sync_call_llm(prompt: str, model_kind: str = "default") -> Optional[Tuple[s
                 text = getattr(msg, "reasoning_content", None) or ""
             if text:
                 return text.strip(), f'{config["provider"]}:{config["model"]}'
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("OpenAI/Kimi call failed [%s]: %s", config.get("model", "unknown"), exc)
 
     return None
 
 
 async def _maybe_call_llm(prompt: str, model_kind: str = "default") -> Optional[Tuple[str, str]]:
-    """异步包装：将同步 LLM 调用放到线程池执行，避免阻塞事件循环。"""
-    return await asyncio.to_thread(_sync_call_llm, prompt, model_kind)
+    """异步包装：将同步 LLM 调用放到线程池执行，避免阻塞事件循环。
+    使用 Semaphore 限制同时调用数，防止 API 限流导致 fallback。"""
+    async with _LLM_SEMAPHORE:
+        return await asyncio.to_thread(_sync_call_llm, prompt, model_kind)
 
 
 _HIT_RE = re.compile(r"^\[\d+\] 来源: (?P<source>.+?) \(chunk", re.M)
@@ -365,4 +373,13 @@ async def compose_response(
     if llm:
         fallback["answer"] = llm[0]
         fallback["provider"] = llm[1]
+    else:
+        # LLM 调用失败（通常是被限流），fallback 到本地模板，但要标注清楚
+        fallback["answer"] = (
+            "大模型调用暂时不可用（可能由于并发限流或网络超时），\n\n"
+            + fallback["answer"]
+            + "\n\n---\n"
+            "> 提示：请稍后重试，或减少同时运行的大模型任务数量。"
+        )
+        fallback["provider"] = "deterministic-fallback(rate-limit)"
     return fallback
